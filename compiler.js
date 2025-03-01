@@ -2,21 +2,26 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("runButton").addEventListener("click", runEsperantoCode);
 });
 
-const keywords = new Set(["estas", "plus", "montru", "dum", "se"]);
+const keywords = new Set(["estas", "plus", "minus", "oble", "dividita", "montru", "dum", "se"]);
+const operators = { "plus": "+", "minus": "-", "oble": "*", "dividita": "/" };
 
 function lexer(code) {
     const tokens = [];
-    const words = code.split(/\s+/);
+    const words = code.match(/\w+|\S/g);  // Boşluk bazlı yerine karakter bazlı bölme
 
     words.forEach(word => {
-        if (!isNaN(word)) {  
+        if (!isNaN(word)) {
             tokens.push(["NUMBER", Number(word)]);
-        } else if (keywords.has(word)) {  
+        } else if (keywords.has(word)) {
             tokens.push([word.toUpperCase(), word]);
-        } else if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(word)) {  
+        } else if (operators[word]) {
+            tokens.push(["OPERATOR", operators[word]]);
+        } else if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(word)) {
             tokens.push(["IDENTIFIER", word]);
-        } else {  
-            tokens.push(["ERROR", word]);  
+        } else if (word === "(" || word === ")") {
+            tokens.push(["PAREN", word]);
+        } else {
+            tokens.push(["ERROR", word]);
         }
     });
 
@@ -30,12 +35,16 @@ function parser(tokens) {
     while (i < tokens.length) {
         const [type, value] = tokens[i];
 
-        if (type === "IDENTIFIER" && i + 2 < tokens.length && tokens[i + 1][0] === "ESTAS" && tokens[i + 2]) {
-            ast.push(["ASSIGN", value, tokens[i + 2]]);
-            i += 3;
+        if (type === "IDENTIFIER" && i + 2 < tokens.length && tokens[i + 1][0] === "ESTAS") {
+            let expressionTokens = tokens.slice(i + 2);
+            let expressionTree = parseExpression(expressionTokens);
+            ast.push(["ASSIGN", value, expressionTree]);
+            i += 2 + expressionTokens.length;
         } else if (type === "MONTRU" && i + 1 < tokens.length) {
-            ast.push(["PRINT", tokens[i + 1]]);
-            i += 2;
+            let expressionTokens = tokens.slice(i + 1);
+            let expressionTree = parseExpression(expressionTokens);
+            ast.push(["PRINT", expressionTree]);
+            i += 1 + expressionTokens.length;
         } else {
             i++;
         }
@@ -44,15 +53,71 @@ function parser(tokens) {
     return ast;
 }
 
+function parseExpression(tokens) {
+    let outputQueue = [];
+    let operatorStack = [];
+
+    const precedence = { "+": 1, "-": 1, "*": 2, "/": 2 };
+
+    tokens.forEach(([type, value]) => {
+        if (type === "NUMBER" || type === "IDENTIFIER") {
+            outputQueue.push([type, value]);
+        } else if (type === "OPERATOR") {
+            while (
+                operatorStack.length > 0 &&
+                precedence[operatorStack[operatorStack.length - 1][1]] >= precedence[value]
+            ) {
+                outputQueue.push(operatorStack.pop());
+            }
+            operatorStack.push([type, value]);
+        } else if (value === "(") {
+            operatorStack.push([type, value]);
+        } else if (value === ")") {
+            while (operatorStack.length > 0 && operatorStack[operatorStack.length - 1][1] !== "(") {
+                outputQueue.push(operatorStack.pop());
+            }
+            operatorStack.pop(); // Remove "("
+        }
+    });
+
+    while (operatorStack.length > 0) {
+        outputQueue.push(operatorStack.pop());
+    }
+
+    return outputQueue;
+}
+
 function interpreter(ast) {
     const variables = {};
     let output = "";
 
+    function evaluate(expression) {
+        let stack = [];
+
+        expression.forEach(token => {
+            let [type, value] = token;
+            if (type === "NUMBER") {
+                stack.push(value);
+            } else if (type === "IDENTIFIER") {
+                stack.push(variables[value] || 0);
+            } else if (type === "OPERATOR") {
+                let b = stack.pop();
+                let a = stack.pop();
+                if (value === "+") stack.push(a + b);
+                if (value === "-") stack.push(a - b);
+                if (value === "*") stack.push(a * b);
+                if (value === "/") stack.push(a / b);
+            }
+        });
+
+        return stack.pop();
+    }
+
     ast.forEach(node => {
         if (node[0] === "ASSIGN") {
-            variables[node[1]] = node[2][1];
+            variables[node[1]] = evaluate(node[2]);
         } else if (node[0] === "PRINT") {
-            output += (variables[node[1][1]] || "Nedifinita") + "\n";
+            output += evaluate(node[1]) + "\n";
         }
     });
 
@@ -61,11 +126,8 @@ function interpreter(ast) {
 
 function runEsperantoCode() {
     const codeElement = document.getElementById("editor");
-    if (!codeElement) {
-        console.error("Editor elementi bulunamadı!");
-        return;
-    }
     const code = codeElement.innerText.trim();
+
     if (code === "") {
         document.getElementById("esperantoOutput").innerText = "Neniu kodo enmetita!";
         return;
@@ -74,33 +136,4 @@ function runEsperantoCode() {
     const tokens = lexer(code);
     const ast = parser(tokens);
     interpreter(ast);
-}
-
-// Editörün yanlış çalışmasını engelleyen kod
-document.getElementById("editor").addEventListener("keydown", function (event) {
-    if (event.key === "Enter") {
-        event.preventDefault(); 
-        document.execCommand("insertLineBreak");
-    }
-});
-
-// Ters yazma ve takılma sorununu çözen kod
-document.getElementById("editor").addEventListener("input", function () {
-    const editor = document.getElementById("editor");
-    const text = editor.innerText;
-    editor.innerText = text;
-    placeCaretAtEnd(editor);
-});
-
-// İmleci her zaman metnin sonuna koy
-function placeCaretAtEnd(element) {
-    element.focus();
-    if (typeof window.getSelection !== "undefined" && document.createRange) {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        range.collapse(false);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-    }
 }
