@@ -1,9 +1,8 @@
 document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("runButton").addEventListener("click", runEsperantoCode);
-    document.getElementById("editor").addEventListener("input", highlightEsperantoCode);
 });
 
-const keywords = { "estas": "ASSIGN", "plus": "ADD", "montru": "PRINT", "dum": "WHILE", "se": "IF" };
+const keywords = new Set(["estas", "plus", "montru", "dum", "se"]);
 
 function lexer(code) {
     const tokens = [];
@@ -12,8 +11,8 @@ function lexer(code) {
     words.forEach(word => {
         if (!isNaN(word)) {  
             tokens.push(["NUMBER", Number(word)]);
-        } else if (keywords[word]) {  
-            tokens.push([keywords[word], word]);
+        } else if (keywords.has(word)) {  
+            tokens.push([word.toUpperCase(), word]);
         } else if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(word)) {  
             tokens.push(["IDENTIFIER", word]);
         } else {  
@@ -31,10 +30,10 @@ function parser(tokens) {
     while (i < tokens.length) {
         const [type, value] = tokens[i];
 
-        if (type === "IDENTIFIER" && i + 2 < tokens.length && tokens[i + 1][0] === "ASSIGN" && tokens[i + 2]) {
+        if (type === "IDENTIFIER" && i + 2 < tokens.length && tokens[i + 1][0] === "ESTAS" && tokens[i + 2]) {
             ast.push(["ASSIGN", value, tokens[i + 2]]);
             i += 3;
-        } else if (type === "PRINT" && i + 1 < tokens.length) {
+        } else if (type === "MONTRU" && i + 1 < tokens.length) {
             ast.push(["PRINT", tokens[i + 1]]);
             i += 2;
         } else {
@@ -63,7 +62,7 @@ function interpreter(ast) {
 function runEsperantoCode() {
     const codeElement = document.getElementById("editor");
     if (!codeElement) {
-        console.error("Editor öğesi bulunamadı!");
+        console.error("Editor elementi bulunamadı!");
         return;
     }
     const code = codeElement.innerText.trim();
@@ -77,19 +76,29 @@ function runEsperantoCode() {
     interpreter(ast);
 }
 
-function highlightEsperantoCode() {
+// Editörün yanlış çalışmasını engelleyen kod
+document.getElementById("editor").addEventListener("keydown", function (event) {
+    if (event.key === "Enter") {
+        event.preventDefault(); 
+        document.execCommand("insertLineBreak");
+    }
+});
+
+document.getElementById("editor").addEventListener("input", function () {
     const editor = document.getElementById("editor");
-    const selection = window.getSelection();
-    const range = selection.getRangeAt(0);
+    const text = editor.innerText;
+    editor.innerText = text;
+    placeCaretAtEnd(editor);
+});
 
-    let code = editor.innerText;
-    let highlightedHTML = code.replace(/\b(estas|plus|montru|dum|se)\b/g, '<span class="keyword">$1</span>');
-
-    editor.innerHTML = highlightedHTML;
-
-    // İmlecin yanlış yere gitmesini önlemek için:
-    range.setStart(editor.childNodes[editor.childNodes.length - 1], 1);
-    range.setEnd(editor.childNodes[editor.childNodes.length - 1], 1);
-    selection.removeAllRanges();
-    selection.addRange(range);
+function placeCaretAtEnd(element) {
+    element.focus();
+    if (typeof window.getSelection !== "undefined" && document.createRange) {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
 }
