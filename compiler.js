@@ -84,21 +84,35 @@ document.getElementById("editor").addEventListener("keydown", function (event) {
     }
 });
 
+// İmlecin yanlış yere gitmesini önleyen kod
 document.getElementById("editor").addEventListener("input", function () {
     const editor = document.getElementById("editor");
     const text = editor.innerText;
+
+    // Mevcut imleç konumunu kaydet
+    const selection = window.getSelection();
+    const range = selection.getRangeAt(0);
+    const offset = range.startOffset;
+
+    // Renklendirme işlemi
+    const highlightedHTML = text.replace(/\b(estas|plus|montru|dum|se)\b/g, '<span class="keyword">$1</span>');
+    
+    // HTML güncellemesi yerine sadece `innerText` kullanarak metni değiştiriyoruz
     editor.innerText = text;
-    placeCaretAtEnd(editor);
+
+    // Önceki imleç konumuna geri döndür
+    placeCaretAtOffset(editor, offset);
 });
 
-function placeCaretAtEnd(element) {
+// İmleci belirli bir noktaya yerleştiren fonksiyon
+function placeCaretAtOffset(element, offset) {
     element.focus();
-    if (typeof window.getSelection !== "undefined" && document.createRange) {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        range.collapse(false);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-    }
+    const selection = window.getSelection();
+    const range = document.createRange();
+    
+    range.setStart(element.childNodes[0] || element, offset);
+    range.collapse(true);
+
+    selection.removeAllRanges();
+    selection.addRange(range);
 }
